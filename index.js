@@ -38,7 +38,7 @@ if (config.cors == "on") {
 
 async function randomString(len) {
   len = len || 6;
-  let $chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678';
+  let $chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz0123456789'; // '0123456789' 纯数字，abcdefghijklmnopqrstuvwxyz0123456789' 小写+数字
   let maxPos = $chars.length;
   let result = '';
   for (let i = 0; i < len; i++) {
