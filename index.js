@@ -1,25 +1,24 @@
 const config = {
-  no_ref: "off", //Control the HTTP referrer header, if you want to create an anonymous link that will hide the HTTP Referer header, please set to "on" .
-  theme:"theme/captcha",//Homepage theme, use the empty value for default theme. To use urlcool theme, please fill with "theme/urlcool" . If you need captcha feature, you need to use captcha theme.
-  cors: "on",//Allow Cross-origin resource sharing for API requests.
-  unique_link:true,//If it is true, the same long url will be shorten into the same short url
-  custom_link:false,//Allow users to customize the short url.
-  safe_browsing_api_key: "", //Enter Google Safe Browsing API Key to enable url safety check before redirect.
-  expiration_ttl: 0, // Short link expiration time in seconds. 86400 = 24 hours. Set to 0 for no expiration.
+  no_ref: "off",
+  theme: "",
+  cors: "on",
+  unique_link: true,
+  custom_link: false,
+  safe_browsing_api_key: "",
+  expiration_ttl: 0,
   
-  // CAPTCHA Configuration
   captcha: {
-    enabled: true, // Master switch for CAPTCHA service
-    api_endpoint: "https://captcha.gurl.eu.org/api", // CAP Worker API endpoint
-    require_on_create: true, // Require CAPTCHA when creating short links
-    require_on_access: false, // Require CAPTCHA when accessing short links
-    timeout: 5000, // API request timeout in milliseconds
-    fallback_on_error: true, // Allow operations when CAPTCHA service is down
-    max_retries: 2, // Maximum retry attempts for CAPTCHA API calls
+    enabled: true,
+    api_endpoint: "https://captcha.gurl.eu.org/api",
+    require_on_create: true,
+    require_on_access: false,
+    timeout: 5000,
+    fallback_on_error: true,
+    max_retries: 2,
   }
-  }
-  
-  const html404 = `<!DOCTYPE html>
+}
+
+const html404 = `<!DOCTYPE html>
 <body>
   <h1>404 Not Found.</h1>
   <p>The url you visit is not found.</p>
@@ -77,15 +76,17 @@ function getKvPutOptions() {
   return hasValidTtl ? { expirationTtl: Math.floor(rawTtl) } : {};
 }
 
-async function save_url(URL) {
-  let random_key = await randomString()
-  let is_exist = await LINKS.get(random_key)
-  console.log(is_exist)
-  if (is_exist == null) {
-    return await LINKS.put(random_key, URL, getKvPutOptions()), random_key
-  } else {
-    return save_url(URL)
-  }
+async function save_url(URL){
+    let random_key = await randomString()
+    let is_exist = await LINKS.get(random_key)
+    console.log(is_exist)
+    if (is_exist == null) {
+        await LINKS.put(random_key, URL, getKvPutOptions())
+        return random_key
+    }
+    else {
+        return save_url(URL)
+    }
 }
 
 async function is_url_exist(url_sha512) {
@@ -248,24 +249,25 @@ async function handleRequest(request) {
       }
     }
 
-    let stat, random_key
+    let random_key
     if (config.unique_link) {
       let url_sha512 = await sha512(req["url"])
       let url_key = await is_url_exist(url_sha512)
       if (url_key) {
         random_key = url_key
       } else {
-        stat, random_key = await save_url(req["url"])
-        if (typeof (stat) == "undefined") {
+        random_key = await save_url(req["url"])
+        if (random_key) {
           console.log(await LINKS.put(url_sha512, random_key, getKvPutOptions()))
         }
       }
     } else {
-      stat, random_key = await save_url(req["url"])
+      random_key = await save_url(req["url"])
     }
 
-    console.log(stat)
-    if (typeof (stat) == "undefined") {
+    console.log("Generated key:", random_key)
+    
+    if (random_key) {
       return new Response(JSON.stringify({
         status: 200,
         key: "/" + random_key,
@@ -276,7 +278,7 @@ async function handleRequest(request) {
     } else {
       return new Response(JSON.stringify({
         status: 500,
-        error: "Reached KV write limitation"
+        error: "Failed to generate short URL"
       }), {
         headers: response_header,
         status: 500
@@ -289,19 +291,253 @@ async function handleRequest(request) {
   }
 
   // Handle GET request - Access short link
-  // ========== 修复：使用新变量名 shortCode ==========
   const shortCode = requestURL.pathname.split("/")[1]
   const params = requestURL.search
 
   console.log(shortCode)
 
-  // Serve homepage
+  // ========== 内置 HTML 首页（带 CAPTCHA）==========
   if (!shortCode) {
-    const html = await fetch("https://xytom.github.io/Url-Shorten-Worker/" + config.theme + "/index.html")
-    return new Response(await html.text(), {
-      headers: {
-        "content-type": "text/html;charset=UTF-8",
-      },
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL Shortener</title>
+  <script src="https://captcha.gurl.eu.org/cap.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      width: 100%;
+      max-width: 500px;
+      overflow: hidden;
+    }
+    .header {
+      padding: 40px 30px 20px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 28px;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+    .form {
+      padding: 20px 30px 30px;
+    }
+    .input-group {
+      margin-bottom: 20px;
+    }
+    .input-group label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .input-group input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    .input-group input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .captcha-box {
+      margin: 20px 0;
+      display: flex;
+      justify-content: center;
+      min-height: 80px;
+    }
+    button {
+      width: 100%;
+      padding: 16px;
+      background: #4a7dff;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover:not(:disabled) {
+      background: #3a6ae8;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 16px;
+      background: #d4edda;
+      border-radius: 10px;
+      display: none;
+      word-break: break-all;
+    }
+    #result a {
+      color: #155724;
+      font-weight: 600;
+    }
+    #error {
+      margin-top: 20px;
+      padding: 16px;
+      background: #f8d7da;
+      color: #721c24;
+      border-radius: 10px;
+      display: none;
+    }
+    .footer {
+      padding: 20px 30px;
+      background: #f8f9fa;
+      text-align: center;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+    .footer a {
+      color: #4a7dff;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .footer a:hover {
+      text-decoration: underline;
+    }
+    .admin-link {
+      color: #666 !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <h1>🎁 Shorten your URLs !</h1>
+      <p>Please enter the long URL to be shortened :</p>
+    </div>
+    
+    <div class="form">
+      <div class="input-group">
+        <input type="url" id="url" placeholder="Example: https://example.com/" required>
+      </div>
+      
+      <!-- CAPTCHA 组件 -->
+      <div class="captcha-box">
+        <cap-widget id="cap" data-cap-api-endpoint="https://captcha.gurl.eu.org/api/"></cap-widget>
+      </div>
+      
+      <button onclick="shorten()" id="btn">Shorten it</button>
+      
+      <div id="result"></div>
+      <div id="error"></div>
+    </div>
+    
+    <div class="footer">
+      <a href="/admin" class="admin-link">管理后台</a>
+    </div>
+  </div>
+  
+  <script>
+    let captchaToken = null;
+    
+    // 监听 CAPTCHA 验证完成
+    const widget = document.querySelector("#cap");
+    widget.addEventListener("solve", function(e) {
+      captchaToken = e.detail.token;
+      console.log("CAPTCHA solved, token:", captchaToken);
+    });
+    
+    async function shorten() {
+      const url = document.getElementById('url').value;
+      const btn = document.getElementById('btn');
+      const resultDiv = document.getElementById('result');
+      const errorDiv = document.getElementById('error');
+      
+      if (!url) {
+        errorDiv.textContent = 'Please enter a URL';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      if (!captchaToken) {
+        errorDiv.textContent = 'Please complete the CAPTCHA first';
+        errorDiv.style.display = 'block';
+        return;
+      }
+      
+      btn.disabled = true;
+      btn.textContent = 'Shortening...';
+      resultDiv.style.display = 'none';
+      errorDiv.style.display = 'none';
+      
+      try {
+        const response = await fetch('/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            url: url,
+            captcha_token: captchaToken  // 携带 CAPTCHA token
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 200) {
+          const shortUrl = window.location.origin + data.short_url;
+          resultDiv.innerHTML = '<strong>Short URL:</strong><br><a href="' + shortUrl + '" target="_blank">' + shortUrl + '</a>';
+          resultDiv.style.display = 'block';
+          document.getElementById('url').value = '';
+          // 重置 CAPTCHA
+          captchaToken = null;
+          widget.reset();
+        } else {
+          errorDiv.textContent = 'Error: ' + (data.error || 'Unknown error');
+          errorDiv.style.display = 'block';
+          // 如果 CAPTCHA 错误，重置
+          if (data.captcha_required) {
+            captchaToken = null;
+            widget.reset();
+          }
+        }
+      } catch (e) {
+        errorDiv.textContent = 'Network error: ' + e.message;
+        errorDiv.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Shorten it';
+      }
+    }
+    
+    document.getElementById('url').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') shorten();
+    });
+  </script>
+</body>
+</html>`
+    
+    return new Response(html, {
+      headers: { "content-type": "text/html;charset=UTF-8" }
     })
   }
 
@@ -766,6 +1002,7 @@ async function handleAdminList(request) {
   })
 }
 
+// ========== 修复：同时删除关联的 SHA512 哈希键 ==========
 async function handleAdminDelete(request) {
   const url = new URL(request.url)
   const authKey = url.searchParams.get('key')
@@ -775,7 +1012,25 @@ async function handleAdminDelete(request) {
   }
   
   const { shortCode } = await request.json()
-  await LINKS.delete(shortCode)
+  
+  // 获取目标 URL，用于计算哈希
+  const targetUrl = await LINKS.get(shortCode)
+  
+  if (targetUrl) {
+    // 删除短码
+    await LINKS.delete(shortCode)
+    
+    // 如果启用了 unique_link，同时删除 SHA512 哈希键
+    if (config.unique_link) {
+      const urlHash = await sha512(targetUrl)
+      // 验证这个哈希确实指向当前短码，避免误删
+      const storedShortCode = await LINKS.get(urlHash)
+      if (storedShortCode === shortCode) {
+        await LINKS.delete(urlHash)
+        console.log(`Deleted hash key: ${urlHash}`)
+      }
+    }
+  }
   
   return new Response(JSON.stringify({ success: true }), {
     headers: { 'Content-Type': 'application/json' }
