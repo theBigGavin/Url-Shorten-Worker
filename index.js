@@ -12,7 +12,7 @@ const config = {
     enabled: true, // Master switch for CAPTCHA service
     api_endpoint: "https://captcha.gurl.eu.org/api", // CAP Worker API endpoint
     require_on_create: true, // Require CAPTCHA when creating short links
-    require_on_access: true, // Require CAPTCHA when accessing short links
+    require_on_access: false, // Require CAPTCHA when accessing short links
     timeout: 5000, // API request timeout in milliseconds
     fallback_on_error: true, // Allow operations when CAPTCHA service is down
     max_retries: 2, // Maximum retry attempts for CAPTCHA API calls
